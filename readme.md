@@ -1,3 +1,7 @@
 Boolean Neural Networks
 
-differentiable graphs with boolean inputs and weights using the xnor gate.
+Neural networks using boolean inputs and weights trained by expectation-backpropagation.
+
+References:
+	- https://arxiv.org/pdf/1603.05279.pdf
+	- https://papers.nips.cc/paper/5269-expectation-backpropagation-parameter-free-training-of-multilayer-neural-networks-with-continuous-or-discrete-weights.pdf
