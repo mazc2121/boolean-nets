@@ -1,6 +1,6 @@
 Boolean Neural Networks
 
-Neural networks using boolean inputs and weights trained by expectation-backpropagation.
+Neural networks using boolean inputs and weights.
 
 References:
 	- https://arxiv.org/pdf/1603.05279.pdf

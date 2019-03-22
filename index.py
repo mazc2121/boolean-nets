@@ -1,6 +1,15 @@
 import numpy as np
+import tensorflow as tf
+from tensorflow.examples.tutorials.mnist import input_data
+from sklearn.metrics import log_loss
+from ga import GA
 
-size = (2,3)
+old_v = tf.logging.get_verbosity()
+tf.logging.set_verbosity(tf.logging.ERROR)
+
+mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
+
+tf.logging.set_verbosity(old_v)
 
 def to_bipolar(booleanArray):
 	result = booleanArray * 1
@@ -13,13 +22,13 @@ def xnor(a, b):
 
 def xnor_matmul(a, b):
 	result = []
+	majority = a.shape[1] * 0.5
 
 	for i in range(a.shape[0]):
 		aux = []
 
 		for j in range(b.shape[1]):
-			k = xnor(a[i, :], b[:, j])
-			dot = np.count_nonzero(k) - k[k < 1].shape[0]
+			dot = np.count_nonzero(xnor(a[i, :], b[:, j])) > majority
 
 			aux.append(dot)
 
@@ -27,31 +36,59 @@ def xnor_matmul(a, b):
 
 	return np.array(result)
 
-x1 = np.random.choice(a=[False, True], size=size)
-
 def Dense(input_size, num_units):
 	params = {
-		'weights': np.random.choice(a=[False, True], size=(input_size, num_units)),
-		'bias': np.random.choice(a=[False, True], size=(num_units,))
+		'weights': np.empty((input_size, num_units))
+		#'weights': np.random.choice(a=[False, True], size=(input_size, num_units))
 	}
 
-	def forward(x): xnor(x, params['weights'])
+	def forward(x, p): 
+		return xnor_matmul(x, p['weights'])
 
-	params['forward'] = forward
+	return { 'params': params, 'forward': forward }
 
-	return params
+BATCH_SIZE = 32
+INPUT_SIZE = 784
+NUM_UNITS = 500
+EPOCHS = 1
+POP_SIZE = 100
+NUM_MATING = 10
 
-l1 = Dense(3, 10)
+class Model:
+	def __init__(self):
+		self.layers = []
 
-w = l1['weights']
+	def push(self, layer):
+		self.layers.append(layer)
 
-x1_bp = to_bipolar(x1)
-w_bp = to_bipolar(w)
+	def forward(self, x):
+		for l in self.layers:
+			x = l['forward'](x, l['params'])
 
-print(x1_bp)
-print('')
-print(w_bp)
-print('')
-print(np.matmul(x1_bp, w_bp))
-print('')
-print(xnor_matmul(x1, w))
+		return x
+
+	def get_params(self):
+		return [ l['params'] for l in self.layers ]
+
+	def set_params(self, params):
+		for i in range(len(self.layers)):
+			self.layers[i]['params'] = params[i]
+
+
+model = Model()
+
+model.push(Dense(INPUT_SIZE, NUM_UNITS))
+model.push(Dense(NUM_UNITS, 10))
+
+opt = GA(pop_size=POP_SIZE, num_mating=NUM_MATING, fitness_func=log_loss)
+
+for epoch in range(EPOCHS):
+
+	while True:
+		batch_xs, batch_ys = mnist.train.next_batch(BATCH_SIZE)
+
+		if not batch_xs.any():
+			break
+
+		opt.fit(model, batch_xs > 0, batch_ys > 0)
+		break
