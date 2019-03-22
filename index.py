@@ -2,14 +2,25 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 from sklearn.metrics import log_loss
+from sklearn.preprocessing import OneHotEncoder
+from scipy.special import softmax
 from ga import GA
 
-old_v = tf.logging.get_verbosity()
-tf.logging.set_verbosity(tf.logging.ERROR)
+np.set_printoptions(suppress=True)
 
-mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
+(x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
 
-tf.logging.set_verbosity(old_v)
+x_train = x_train.reshape((-1, 784)) / 255
+x_test = x_test.reshape((-1, 784)) / 255
+
+y_train = y_train.reshape((-1, 1))
+y_test = y_test.reshape((-1, 1))
+
+enc = OneHotEncoder(handle_unknown='ignore')
+enc.fit(y_train)
+
+y_train = enc.transform(y_train).toarray()
+y_test = enc.transform(y_test).toarray()
 
 def to_bipolar(booleanArray):
 	result = booleanArray * 1
@@ -36,10 +47,9 @@ def xnor_matmul(a, b):
 
 	return np.array(result)
 
-def Dense(input_size, num_units):
+def XnorDense(input_size, num_units):
 	params = {
 		'weights': np.empty((input_size, num_units))
-		#'weights': np.random.choice(a=[False, True], size=(input_size, num_units))
 	}
 
 	def forward(x, p): 
@@ -47,12 +57,28 @@ def Dense(input_size, num_units):
 
 	return { 'params': params, 'forward': forward }
 
+def Dense(input_size, num_units, activation='relu'):
+	params = {
+		'weights': np.empty((input_size, num_units)),
+		'bias': np.empty((1, num_units))
+	}
+
+	def forward(x, p):
+		x = np.matmul(x, p['weights']) + p['bias']
+
+		if activation == 'relu':
+			return np.maximum(x, 0)
+		elif activation == 'softmax':
+			return softmax(x, axis=1)
+
+	return { 'params': params, 'forward': forward }
+
 BATCH_SIZE = 32
 INPUT_SIZE = 784
-NUM_UNITS = 500
-EPOCHS = 1
+OUTPUT_SIZE = 10
+NUM_UNITS = 128
 POP_SIZE = 100
-NUM_MATING = 10
+NUM_PARENTS = 10
 
 class Model:
 	def __init__(self):
@@ -74,21 +100,50 @@ class Model:
 		for i in range(len(self.layers)):
 			self.layers[i]['params'] = params[i]
 
-
 model = Model()
 
-model.push(Dense(INPUT_SIZE, NUM_UNITS))
-model.push(Dense(NUM_UNITS, 10))
+model.push(XnorDense(INPUT_SIZE, NUM_UNITS))
+model.push(XnorDense(NUM_UNITS, OUTPUT_SIZE))
 
-opt = GA(pop_size=POP_SIZE, num_mating=NUM_MATING, fitness_func=log_loss)
+normal_model = Model()
 
-for epoch in range(EPOCHS):
+normal_model.push(Dense(INPUT_SIZE, NUM_UNITS))
+normal_model.push(Dense(NUM_UNITS, OUTPUT_SIZE, activation='softmax'))
 
-	while True:
-		batch_xs, batch_ys = mnist.train.next_batch(BATCH_SIZE)
+def binary_rand(shape):
+	return np.random.choice(a=[False, True], size=shape)
 
-		if not batch_xs.any():
-			break
+def normal_rand(shape):
+	return np.random.uniform(-1, 1, size=shape)
 
-		opt.fit(model, batch_xs > 0, batch_ys > 0)
-		break
+def binary_mutation(value):
+	m = rand(value.shape[0], value.shape[1], density=0.1).todense() > 0
+
+	return np.logical_or(value, m)
+
+def normal_mutation(value):
+	return value
+
+opt = GA(pop_size=POP_SIZE, num_parents=NUM_PARENTS, \
+ fitness_func=log_loss, rand_func=normal_rand, mutation_func=normal_mutation)
+
+ini_idx = 0
+end_idx = BATCH_SIZE
+
+while ini_idx < y_train.shape[0]:
+	batch_xs = x_train[ini_idx:end_idx]
+	batch_ys = y_train[ini_idx:end_idx]
+
+	opt.fit(normal_model, batch_xs, batch_ys)
+
+	normal_model.set_params(opt.best)
+
+	pred = normal_model.forward(x_test)
+
+	pred = np.argmax(pred, axis=1)
+	target = np.argmax(y_test, axis=1)
+
+	print('fitness', opt.bestFitness, 'accuracy', np.mean(pred == target))
+
+	ini_idx += BATCH_SIZE
+	end_idx += BATCH_SIZE

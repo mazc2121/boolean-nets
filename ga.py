@@ -1,14 +1,18 @@
 import numpy as np
-from sklearn.metrics import log_loss
 from random import randint
+from scipy.sparse import rand
 
 class GA:
-	def __init__(self, pop_size, num_mating, fitness_func):
+	def __init__(self, pop_size, num_parents, fitness_func, rand_func, mutation_func):
 		self.pop_size = pop_size
-		self.num_mating = num_mating
+		self.num_parents = num_parents
+
 		self.fitness_func = fitness_func
+		self.rand_func = rand_func
+		self.mutation_func = mutation_func
 
 		self.pop = None
+		self.best = None
 
 	def build_pop(self, model):
 		params = model.get_params()
@@ -22,7 +26,7 @@ class GA:
 				aux = {}
 
 				for key, value in param_dict.items():
-					aux[key] = np.random.choice(a=[False, True], size=value.shape)
+					aux[key] = self.rand_func(value.shape)
 
 				p.append(aux)
 
@@ -34,13 +38,12 @@ class GA:
 
 		fitness = self.fitness(model, train_x, train_y)
 
-		parents = self.mating_pool(fitness)
+		parents = self.get_parents(fitness)
 
-		# offspring_crossover = self.crossover(parents)
-		# self.mutation(offspring_crossover)
+		offspring_crossover = self.crossover(parents)
+		self.mutation(offspring_crossover)
 
-		# self.pop[0:parents.shape[0], :] = parents
-		# self.pop[parents.shape[0]:, :] = offspring_crossover
+		self.pop = parents + offspring_crossover
 
 	def fitness(self, model, train_x, train_y):
 		scores = []
@@ -50,41 +53,65 @@ class GA:
 
 			pred = model.forward(train_x)
 
-			scores.append(self.fitness_func(train_y, pred))
+			fitness = self.fitness_func(train_y, pred)
+				
+			scores.append(fitness)
+
+		best_idx = np.argmin(np.array(scores))
+
+		self.best = self.pop[best_idx]
+		self.bestFitness = scores[best_idx]
 
 		return scores
 
-	def mating_pool(self, fitness):
-		#parents = np.empty((self.num_mating, self.pop_size[1], self.pop_size[2]))
+	def get_parents(self, fitness):
+		parents = []
 
-		# for parent_num in range(self.num_mating):
-		# 	min_fitness_idx = np.where(fitness == np.min(fitness))[0][0]
+		for i in range(self.num_parents):
+			min_fitness_idx = np.where(fitness == np.min(fitness))[0][0]
 
-		# 	parents[parent_num, :, :] = self.pop[min_fitness_idx, :, :]
+			parents.append(self.pop[min_fitness_idx])
 
-		# 	fitness[min_fitness_idx] = 999999999
+			fitness[min_fitness_idx] = 99999
 
-		# return parents
+		return parents
 
 	def crossover(self, parents):
-		dim_0 = self.pop_size[0] - parents.shape[0]
+		cross_length = self.pop_size - len(parents)
 
-		offspring = np.empty((dim_0, self.pop_size[1], self.pop_size[2]))
+		offspring = []
 
-		crossover_point = np.uint32(self.pop_size[1] * 0.5)
+		for k in range(cross_length):
+			p1 = parents[k % len(parents)]
+			p2 = parents[(k + 1) % len(parents)]
 
-		for k in range(dim_0):
-			parent1_idx = k % parents.shape[0]
-			parent2_idx = (k + 1) % parents.shape[0]
+			child = []
 
-			offspring[k, 0:crossover_point, :] = parents[parent1_idx, 0:crossover_point, :]
-			offspring[k, crossover_point:, :] = parents[parent2_idx, crossover_point:, :]
+			for i in range(len(p1)):
+				p1_param = p1[i]
+				p2_param = p2[i]
+
+				chid_param = {}
+
+				for key, value in p1_param.items():
+					chid_param[key] = np.empty(value.shape)
+
+					crossover_point = randint(0, value.shape[0] - 1)
+
+					chid_param[key][0:crossover_point, :] = value[0:crossover_point, :]
+					chid_param[key][crossover_point:, :] = p2_param[key][crossover_point:, :]
+					chid_param[key] = chid_param[key] > 0
+
+				child.append(chid_param)
+
+			offspring.append(child)
 
 		return offspring
 
 	def mutation(self, offspring_crossover):
-		for k in range(offspring_crossover.shape[0]):
-			x = randint(0, offspring_crossover.shape[1] - 1)
-			y = randint(0, offspring_crossover.shape[2] - 1)
+		for child in offspring_crossover:
 
-			offspring_crossover[k, x, y] = not offspring_crossover[k, x, y] 
+			for param_dict in child:	
+
+				for key, value in param_dict.items():
+					value = self.mutation_func(value)
