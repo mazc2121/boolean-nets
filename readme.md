@@ -1,6 +1,6 @@
 Boolean Neural Networks
 
-Neural networks using boolean inputs and weights.
+Trying to create huge neural networks using only boolean ops.
 
 References:
 	- https://arxiv.org/pdf/1603.05279.pdf
