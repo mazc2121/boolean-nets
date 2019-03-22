@@ -5,6 +5,10 @@ from sklearn.metrics import log_loss
 from sklearn.preprocessing import OneHotEncoder
 from scipy.special import softmax
 from ga import GA
+from es import ES
+import random
+from random import randint
+from scipy.sparse import rand
 
 np.set_printoptions(suppress=True)
 
@@ -47,6 +51,29 @@ def xnor_matmul(a, b):
 
 	return np.array(result)
 
+def binary_rand(shape):
+	return np.random.choice(a=[False, True], size=shape)
+
+def normal_rand(shape):
+	return np.random.uniform(-0.5, 0.5, size=shape)
+
+def binary_mutation(value):
+	m = rand(value.shape[0], value.shape[1], density=0.1).todense() > 0
+
+	return np.logical_or(value, m)
+
+def normal_mutation(value):
+	m = rand(value.shape[0], value.shape[1], density=0.1).todense()
+
+	return value + m * (1 if randint(0, 1) > 0.5 else -1)
+
+def sparse_rand(shape):
+	m = rand(shape[0], shape[1], density=0.1).todense()
+
+	m[m > 0] = random.uniform(-0.5, 0.5)
+
+	return m
+
 def XnorDense(input_size, num_units):
 	params = {
 		'weights': np.empty((input_size, num_units))
@@ -59,8 +86,8 @@ def XnorDense(input_size, num_units):
 
 def Dense(input_size, num_units, activation='relu'):
 	params = {
-		'weights': np.empty((input_size, num_units)),
-		'bias': np.empty((1, num_units))
+		'weights': normal_rand((input_size, num_units)),
+		'bias': np.zeros((1, num_units))
 	}
 
 	def forward(x, p):
@@ -77,8 +104,8 @@ BATCH_SIZE = 32
 INPUT_SIZE = 784
 OUTPUT_SIZE = 10
 NUM_UNITS = 128
-POP_SIZE = 100
-NUM_PARENTS = 10
+POP_SIZE = 200
+NUM_PARENTS = 20
 
 class Model:
 	def __init__(self):
@@ -108,24 +135,13 @@ model.push(XnorDense(NUM_UNITS, OUTPUT_SIZE))
 normal_model = Model()
 
 normal_model.push(Dense(INPUT_SIZE, NUM_UNITS))
+normal_model.push(Dense(NUM_UNITS, NUM_UNITS))
 normal_model.push(Dense(NUM_UNITS, OUTPUT_SIZE, activation='softmax'))
 
-def binary_rand(shape):
-	return np.random.choice(a=[False, True], size=shape)
+# opt = GA(pop_size=POP_SIZE, num_parents=NUM_PARENTS, \
+#  fitness_func=log_loss, rand_func=normal_rand, mutation_func=normal_mutation)
 
-def normal_rand(shape):
-	return np.random.uniform(-1, 1, size=shape)
-
-def binary_mutation(value):
-	m = rand(value.shape[0], value.shape[1], density=0.1).todense() > 0
-
-	return np.logical_or(value, m)
-
-def normal_mutation(value):
-	return value
-
-opt = GA(pop_size=POP_SIZE, num_parents=NUM_PARENTS, \
- fitness_func=log_loss, rand_func=normal_rand, mutation_func=normal_mutation)
+opt = ES(pop_size=POP_SIZE, fitness_func=log_loss, rand_func=sparse_rand)
 
 ini_idx = 0
 end_idx = BATCH_SIZE

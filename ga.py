@@ -1,6 +1,5 @@
 import numpy as np
 from random import randint
-from scipy.sparse import rand
 
 class GA:
 	def __init__(self, pop_size, num_parents, fitness_func, rand_func, mutation_func):
